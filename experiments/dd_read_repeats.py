@@ -31,8 +31,10 @@ def main():
     species = search_species('saccharo')
     print(species)
     read_core_repeat_feature(species)
+    read_core_seq_region(species)
     print(con.execute('DESCRIBE repeat_feature').fetchall())
-    print(con.execute('SELECT * from repeat_feature').fetchone())
+    print(con.execute('''SELECT * from repeat_feature rf inner join seq_region sr
+                      on sr.seq_region_id = rf.seq_region_id''').fetchone())
 
 # Search for species by substring match
 def search_species(search):
@@ -47,6 +49,8 @@ def read_core_table(species, table, cols):
     res = con.execute(sql).fetchone()
     if res == None:
         raise(Exception("Species not found"))
+    # Can fetch directly from FTP
+    # path = f"https://ftp.ensembl.org/pub/release-110/mysql/{res[0]}/{table}.txt.gz"
     path = f"data/{res[0]}/{table}.txt.gz"
     read_table(table, path, cols)
 
@@ -61,6 +65,16 @@ def read_table(name, file, cols):
 def read_core_meta(species):
     cols={'meta_id': 'INT', 'dummy': 'VARCHAR', 'meta_name': 'VARCHAR', 'meta_value': 'VARCHAR'}
     read_core_table(species, 'meta', cols)
+
+# Core seq_region table
+def read_core_seq_region(species):
+    cols={
+        'seq_region_id': 'INT',
+        'name': 'VARCHAR',
+        'coord_system_id': 'INT',
+        'length': 'INT',
+    }
+    read_core_table(species, 'seq_region', cols)
 
 # Core repeat_feature table
 def read_core_repeat_feature(species):
