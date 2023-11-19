@@ -30,11 +30,16 @@ con = duckdb.connect()
 def main():
     species = search_species('saccharo')
     print(species)
-    read_core_repeat_feature(species)
     read_core_seq_region(species)
-    print(con.execute('DESCRIBE repeat_feature').fetchall())
-    print(con.execute('''SELECT * from repeat_feature rf inner join seq_region sr
-                      on sr.seq_region_id = rf.seq_region_id''').fetchone())
+    read_core_repeat_feature(species)
+    read_core_repeat_consensus(species)
+
+#    print(con.execute('DESCRIBE repeat_feature').fetchall())
+    print(con.execute('''
+        select * from repeat_feature rf
+            inner join seq_region sr on sr.seq_region_id = rf.seq_region_id
+            inner join repeat_consensus rc on rc.repeat_consensus_id = rf.repeat_consensus_id
+                      ''').fetchone())
 
 # Search for species by substring match
 def search_species(search):
@@ -63,8 +68,19 @@ def read_table(name, file, cols):
 
 # Core meta table
 def read_core_meta(species):
-    cols={'meta_id': 'INT', 'dummy': 'VARCHAR', 'meta_name': 'VARCHAR', 'meta_value': 'VARCHAR'}
+    cols={'meta_id': 'INT', 'species_id': 'INT', 'meta_name': 'VARCHAR', 'meta_value': 'VARCHAR'}
     read_core_table(species, 'meta', cols)
+
+# Core repeat_consensus table
+def read_core_repeat_consensus(species):
+    cols={
+        'repeat_consensus_id': 'INT',
+        'repeat_name': 'VARCHAR',
+        'repeat_class': 'VARCHAR',
+        'repeat_type': 'VARCHAR',
+        'repeat_consensus': 'TEXT',
+    }
+    read_core_table(species, 'repeat_consensus', cols)
 
 # Core seq_region table
 def read_core_seq_region(species):
