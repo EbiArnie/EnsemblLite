@@ -1,12 +1,14 @@
 import typing
 
 from cogent3 import make_seq
+from cogent3.app.composable import define_app
 from cogent3.core.annotation import Feature
 from cogent3.core.annotation_db import GffAnnotationDb
 from cogent3.core.sequence import Sequence
 
 from ensembl_lite._config import InstalledConfig
 from ensembl_lite._db_base import SqliteDbMixin
+from ensembl_lite._homologydb import species_genes
 from ensembl_lite.util import elt_compress_it, elt_decompress_it
 
 
@@ -45,7 +47,7 @@ class GenomeSeqsDb(SqliteDbMixin):
         self.db.commit()
 
     def get_seq(
-        self, *, coord_name: str, start: OptInt = None, stop: OptInt = None
+        self, *, coord_name: str, start: OptInt = None, end: OptInt = None
     ) -> str:
         """
 
@@ -56,7 +58,7 @@ class GenomeSeqsDb(SqliteDbMixin):
         start
             starting position of slice in python coordinates, defaults
             to 0
-        stop
+        end
             ending position of slice in python coordinates, defaults
             to length of coordinate
         """
@@ -65,15 +67,15 @@ class GenomeSeqsDb(SqliteDbMixin):
         else:
             start = 1
 
-        if stop is None:
+        if end is None:
             sql = f"SELECT SUBSTR(seq, ?, length) FROM {self.table_name} where coord_name = ?"
             values = start, coord_name
         else:
-            stop -= start - 1
+            end -= start - 1
             sql = (
                 f"SELECT SUBSTR(seq, ?, ?) FROM {self.table_name} where coord_name = ?"
             )
-            values = start, stop, coord_name
+            values = start, end, coord_name
 
         return self._execute_sql(sql, values).fetchone()[0]
 
@@ -103,7 +105,7 @@ class CompressedGenomeSeqsDb(GenomeSeqsDb):
         self.db.commit()
 
     def get_seq(
-        self, *, coord_name: str, start: OptInt = None, stop: OptInt = None
+        self, *, coord_name: str, start: OptInt = None, end: OptInt = None
     ) -> str:
         """
 
@@ -114,14 +116,14 @@ class CompressedGenomeSeqsDb(GenomeSeqsDb):
         start
             starting position of slice in python coordinates, defaults
             to 0
-        stop
+        end
             ending position of slice in python coordinates, defaults
             to length of coordinate
         """
         sql = f"SELECT seq FROM {self.table_name} where coord_name = ?"
 
         seq = elt_decompress_it(self._execute_sql(sql, (coord_name,)).fetchone()[0])
-        return seq[start:stop] if start or stop else seq
+        return seq[start:end] if start or end else seq
 
 
 # todo: this wrapping class is required for memory efficiency because
@@ -156,7 +158,7 @@ class Genome:
             ending position of slice in python coordinates, defaults
             to length of coordinate
         """
-        seq = self._seqs.get_seq(coord_name=seqid, start=start, stop=stop)
+        seq = self._seqs.get_seq(coord_name=seqid, start=start, end=stop)
         seq = make_seq(seq, name=seqid, moltype="dna")
         seq.annotation_offset = start or 0
         seq.annotation_db = self._annotdb
@@ -186,6 +188,10 @@ class Genome:
                 msg = f"ERROR (report me): {self.species!r}, {seqid!r}"
                 raise TypeError(msg)
             yield from seq.get_features(**kwargs)
+
+    def close(self):
+        self._seqs.close()
+        self._annotdb.db.close()
 
 
 def load_genome(*, cfg: InstalledConfig, species: str):
@@ -225,4 +231,25 @@ def get_seqs_for_ids(
             seq.name = f"{species}-{name}"
         seq.info["species"] = species
         seq.info["name"] = name
+        # disconnect from annotation so the closure of the genome
+        # does not cause issues when run in parallel
+        seq.annotation_db = None
         yield seq
+
+    genome.close()
+    del genome
+
+
+@define_app
+def get_selected_seqs(species_gene_ids: species_genes, config: InstalledConfig) -> list:
+    """return gene sequences when given a species_gene_id instance
+
+    Notes
+    -----
+    This function becomes a class, created using config. Calling the class
+    instance with a species_genes instance is used to extract the list of gene
+    ID's from the species.
+    """
+    species = species_gene_ids.species
+    gene_ids = species_gene_ids.gene_ids
+    return list(get_seqs_for_ids(cfg=config, species=species, names=gene_ids))

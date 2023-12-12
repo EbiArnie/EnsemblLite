@@ -38,8 +38,10 @@ def compressed_array_to_sqlite(data):
 
 def decompressed_sqlite_to_array(data):
     result = numpy.frombuffer(_decompressor(data), dtype=numpy.int32)
-    dim = result.shape[0] // 2
-    return result.reshape((dim, 2))
+    if len(result):
+        dim = result.shape[0] // 2
+        result = result.reshape((dim, 2))
+    return result
 
 
 # registering the conversion functions with sqlite
@@ -83,15 +85,23 @@ class SqliteDbMixin:
         bargs.apply_defaults()
         init_vals = bargs.arguments
         init_vals.pop("self", None)
-        obj._serialisable = init_vals
+        obj._init_vals = init_vals
         return obj
+
+    def __getstate__(self):
+        return {**self._init_vals}
+
+    def __setstate__(self, state):
+        # this will reset connections to read only db's
+        obj = self.__class__(**state)
+        self.__dict__.update(obj.__dict__)
 
     def __repr__(self):
         name = self.__class__.__name__
         total_records = len(self)
         args = ", ".join(
             f"{k}={repr(v) if isinstance(v, str) else v}"
-            for k, v in self._serialisable.items()
+            for k, v in self._init_vals.items()
             if k != "data"
         )
         return f"{name}({args}, total_records={total_records})"
@@ -115,7 +125,7 @@ class SqliteDbMixin:
         # Assumes schema attributes named as `_<table name>_schema`
         for attr in dir(self):
             if attr.endswith("_schema"):
-                table_name = attr.split("_")[1]
+                table_name = "_".join(attr.split("_")[1:-1])
                 attr = getattr(self, attr)
                 sql = _make_table_sql(table_name, attr)
                 self._execute_sql(sql)
