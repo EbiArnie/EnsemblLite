@@ -24,6 +24,9 @@ dependencies = ["blosc2",
         "trogon",
         "unsync",
         "wakepy>0.7",
+        "duckdb",
+        "requests",
+        "tqdm",
         ]
 classifiers = [
         "Development Status :: 5 - Production/Stable",
