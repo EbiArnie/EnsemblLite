@@ -66,7 +66,8 @@ def main():
         outfile = f"{LOCAL_DIR}/{dbname}/repeats.parquet"
         sql = f"SUMMARIZE FROM read_parquet('{outfile}')"
         res = sql_ex(sql)
-        print(res.fetchnumpy())
+#        print(res.fetchnumpy())
+        print(res.fetchdf())
 
         print("Done")
 
